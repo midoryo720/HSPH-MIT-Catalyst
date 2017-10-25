@@ -1,0 +1,31 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+You've recently discovered that there are in fact two types of cholesterol-- both good (HDL) and bad (LDL). You are worried that you may have a genetic predisposition to having high levels of bad cholesterol and decide to investigate what genes may be associated with bad cholesterol. Here, we'll do a basic exploration of the data before investigating the specific genetic effects in subsequent lectures. 
+
+# Problem 1
+**Access the LDL summary statistics from the GLGC Consortium's genome-wide association study. Visualize the summary statistics both as a Manhattan Plot and as a Q-Q plot. What chromosome(s) appear to have genome-wide significant hits?** <br>
+
+_Hint: use the _**qqman** _package in **R** to visualize the data, which can be accessed through_ **LDHub**. 
+
+
+
+\newpage
+
+# Problem 2
+**As part of the GLGC Consortium, the group analyzed data for a different SNP array, the Metabochip. Visualize the summary statistics both as a Manhattan Plot and as a Q-Q plot. What chromosome(s) appear to have genome-wide significant hits?**<br>
+
+_Hint: use the Metabochip summary statistics can be found on the same page as the GWAS summary statistics_
+
+
+
+\newpage
+
+# Problem 3
+**Compute the measure of systematic inflation ($\lambda_{GC}$) associatd with the summary statistics in Problem 1 and Problem 2. For which SNP array are the summary statistics more inflated? **
+
+_Hint:_  $\lambda_{GC}$ = median($\chi^2$) `/ 0.4549364` _where the last number comes from_ `qchisq(0.5,1)`
+
+\newpage
