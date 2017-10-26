@@ -2,15 +2,68 @@
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+```{r}
+install.packages("tidyr")
+```
+
+```{r}
+library(tidyr)
+```
+
+
+# separate(sumstats,SNP_HGLT,c("chr","pos"),sep="")
+
 # Introduction
 You've recently discovered that there are in fact two types of cholesterol-- both good (HDL) and bad (LDL). You are worried that you may have a genetic predisposition to having high levels of bad cholesterol and decide to investigate what genes may be associated with bad cholesterol. Here, we'll do a basic exploration of the data before investigating the specific genetic effects in subsequent lectures. 
 
 # Problem 1
 **Access the LDL summary statistics from the GLGC Consortium's genome-wide association study. Visualize the summary statistics both as a Manhattan Plot and as a Q-Q plot. What chromosome(s) appear to have genome-wide significant hits?** <br>
 
+
+# GWAS Summary Statistics
+```{r parse1, eval = TRUE, echo = TRUE, message = FALSE, warning = FALSE, cache = TRUE}
+pathToDataFile <- "/Users/uchimidouryou/Documents/HSPH:MIT:Catalyst/BST227/HW1_1031/Mc_LDL.txt.gz"
+sumstats <- as.data.frame(data.table::fread(paste0("zcat < ", pathToDataFile), showProgress = FALSE))
+head(sumstats)
+```
+
+```{r}
+newdt<-separate(sumstats,SNP_hg18,c("CHR","POS"),sep=":")
+head(newdt)
+```
+
+```{r}
+newdt$chr2 <- as.numeric(gsub("chr","",newdt$CHR))
+newdt$pos2 <- as.numeric(gsub("POS","",newdt$POS))
+newdt$P <- newdt$`P-value`
+newdt <- newdt[newdt$P > 10^(-100),]
+newdt <- newdt[complete.cases(newdt),]
+qqman::manhattan(newdt, chr="chr2",bp = "pos2",p="P-value")
+```
+
+
+```{r}
+df2<-gsub("CHR","",df$CHR)0.
+head(df$CHR)
+```
+
+#as numeric
+## df<-df[df$p>10^(-100),]
+
+## Manhattan plot 
+```{r manhat, cache = TRUE, echo = TRUE, eval=TRUE, fig.height = 8, warning = FALSE, message = FALSE, fig.width = 13, fig.cap = "Manhattan plot of summary statistics", fig.align = "center"}
+#library(qqman)
+qqman::manhattan(newdt, bp = "POS")
+```
+
+
+## QQ Plot
+```{r qq, cache = TRUE, echo = TRUE, eval=TRUE, fig.height = 8, fig.width = 8, fig.cap = "qqplot of summary statistics", fig.align = "center"}
+qqman::qq(sumstats$P)
+```
 _Hint: use the _**qqman** _package in **R** to visualize the data, which can be accessed through_ **LDHub**. 
 
-
+###qqman
 
 \newpage
 
