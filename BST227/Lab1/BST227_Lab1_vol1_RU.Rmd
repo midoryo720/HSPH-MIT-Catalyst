@@ -1,0 +1,87 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Important Concepts
+
+- Installing `R`, `RStudio`, and `R markdown`
+- Using `knitr` to generate code-embedded documents, including `.pdf` files
+- Accessing `LDHub` and understanding summary statistics files from GWAS.
+- Understanding manhattan plots and qq plots. 
+
+# R / R Studio
+
+- Download and install `R`, a free computing environment from the [official R Project here](https://www.r-project.org/).
+- One useful way of interfacing with the `R` computing environment is using [RStudio](https://www.rstudio.com/products/rstudio/download/). The assignments and labs for this course will rely on `RStudio`, which simply provides an attractive interface for the `R` language. 
+- You may have `R` installed previously on your machine or may have multiple versions. Ensure that you have `R version > 3.4.0` installed
+
+# knitr
+
+The `knitr` package enables dynamic report generation with `R`. Practically, this means that you can create assignment solutions that imbed both code and figures that respond to the question prompt. You can install [knitr](https://yihui.name/knitr/) by typing the following into your `R` console:
+
+```
+install.packages("knitr")
+```
+
+# Useful packages
+
+One of the primary benefits of using the `R` programming language is the ability to import code developed and distributed by the public, which can faciliate and expedite solving some of the problems associated with 
+
+```
+install.packages("qqman")
+install.packages("data.table")
+install.packages("plotly")
+```
+
+# Tidyverse
+
+In addition to the packages noted above necessary for this lab, the course will lean heavily on packages developed by Hadley Wickham contained broadly under what's called the [Tidyverse](https://www.tidyverse.org/). These packages include `ggplot`, `dplyr`, and `tidyr`, but all can be downloaded installing the following: 
+
+```
+install.packages("tidyverse")
+```
+
+# LD Hub
+
+A repository of summary statistics that includes per-variant association results is curtailed by the Broad Institute and available for download via [LD Hub](http://ldsc.broadinstitute.org/). This site does not host any of the summary statistic data _per se_, but rather, LD Hub collects summary statistics from genome-wide association studies and performs some summary statistics analyses on them. For the rest of this document, we will use a specific set of summary statistics that were chased from this web resource. Make sure that LD Hub is familiar overall, but download the summary statistics [from this webpage](http://egg-consortium.org/childhood-bmi.html) that contains a specific file `EGG_BMI_HapMap_DISCOVERY.txt.gz`. 
+
+
+# GWAS Summary Statistics
+Here, we'lll read in a basic version of the summary statistics file into a `data.table` (which we cast into a `data.frame`) to use in subsequent functions. 
+In brief, summary statistics are useful since we cannot de-identify individual patients from the data, but we get a full depiction of the potential genes that may be important in a complex trait. 
+
+```{r parse1, eval = TRUE, echo = TRUE, message = FALSE, warning = FALSE, cache = TRUE}
+pathToDataFile <- "/Users/uchimidouryou/Documents/EGG_BMI_HapMap_DISCOVERY.txt.gz"
+sumstats <- as.data.frame(data.table::fread(paste0("zcat < ", pathToDataFile), showProgress = FALSE))
+head(sumstats)
+```
+
+This shows that we have 9 columns in the summary statistics data file. 
+CHR- the chromosome and base pair associated with an individual variant. The third is the SNP name, and the 4th and 5th columns are the reference (European most common allele) and non-reference (Europeak less common allele) bases. The BETA and SE columns have to do with the effect size of the regression, which we will cover more in subsequent lectures. Finally, we see the p-value per-variant, which will be used in subsequent functions, and the effective sample size per variant.  
+
+## Manhattan plot
+A Manhattan plot shows the `-log10(p-value)` of all of the variants genome-wide. The name comes from the Manhattan sky-line, which is what the image is supposed to represent. Here, we have lines that indicate variable levels of genome-wide significance using Bonferroni-corrected statistical significance measures. 
+
+```{r manhat, cache = TRUE, echo = TRUE, eval=TRUE, fig.height = 8, warning = FALSE, message = FALSE, fig.width = 13, fig.cap = "Manhattan plot of summary statistics", fig.align = "center"}
+#library(qqman)
+qqman::manhattan(sumstats, bp = "POS")
+```
+
+
+## QQ Plot
+A qq plot shows how inflated the test statistics are compared to what we may expect under the Null (a uniform distribution of p-values). For most modern GWAS studies, this will move quite far off of the red line, but the cause of it can come from multiple sources; either true polygenic signal OR systematic confounding. 
+
+```{r qq, cache = TRUE, echo = TRUE, eval=TRUE, fig.height = 8, fig.width = 8, fig.cap = "qqplot of summary statistics", fig.align = "center"}
+qqman::qq(sumstats$P)
+```
+
+# Genome-wide inflation
+
+To compute a measure of the systematic inflation shown in the qq plot above, we can examine the ratio of the median $\chi^2$ under the null and the median observed $\chi^2$ statistic. Note: the $\chi^2$ statistic can be computed from a p-value using th `qchisq` function. 
+
+```{r inflation, cache = TRUE, echo = TRUE, eval=TRUE, }
+gwas_medchisq <- median(qchisq(sumstats$P,1,lower.tail=FALSE))
+gwas_medchisq / qchisq(0.5,1)
+```
+Here, we see a value greater than 1, indicating some systematic inflation. There can be multiple causes of this, which will be discussed more in class. 
+<br><br>

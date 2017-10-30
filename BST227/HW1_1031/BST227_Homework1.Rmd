@@ -1,3 +1,4 @@
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -14,56 +15,48 @@ library(tidyr)
 # separate(sumstats,SNP_HGLT,c("chr","pos"),sep="")
 
 # Introduction
-You've recently discovered that there are in fact two types of cholesterol-- both good (HDL) and bad (LDL). You are worried that you may have a genetic predisposition to having high levels of bad cholesterol and decide to investigate what genes may be associated with bad cholesterol. Here, we'll do a basic exploration of the data before investigating the specific genetic effects in subsequent lectures. 
+You've recently discovered that there are in fact two types of cholesterol-- both good (HDL) and bad (LDL). You are worried that you may have a genetic predisposition to having high levels of bad cholesterol and decide to `investigate what genes may be associated with bad cholesterol`. 
+Here, we'll do a basic exploration of the data before investigating the specific genetic effects in subsequent lectures. 
 
 # Problem 1
-**Access the LDL summary statistics from the GLGC Consortium's genome-wide association study. Visualize the summary statistics both as a Manhattan Plot and as a Q-Q plot. What chromosome(s) appear to have genome-wide significant hits?** <br>
+**
+-Access the LDL summary statistics from the GLGC Consortium's genome-wide association study. 
+-Visualize the summary statistics both as a Manhattan Plot and as a Q-Q plot. 
+-What `chromosome(s)` appear to have genome-wide significant hits? <br>
 
 
 # GWAS Summary Statistics
+#1 jointGwasMc_LDL.txt.gz
 ```{r parse1, eval = TRUE, echo = TRUE, message = FALSE, warning = FALSE, cache = TRUE}
-pathToDataFile <- "/Users/uchimidouryou/Documents/HSPH:MIT:Catalyst/BST227/HW1_1031/Mc_LDL.txt.gz"
-sumstats <- as.data.frame(data.table::fread(paste0("zcat < ", pathToDataFile), showProgress = FALSE))
-head(sumstats)
+pathToDataFile <- "/Users/uchimidouryou/Documents/HSPH:MIT:Catalyst/BST227/HW1_1031/jointGwasMc_LDL.txt.gz"
+sumstats1 <- as.data.frame(data.table::fread(paste0("zcat < ", pathToDataFile), showProgress = FALSE))
+head(sumstats1)
 ```
 
 ```{r}
-newdt<-separate(sumstats,SNP_hg18,c("CHR","POS"),sep=":")
-head(newdt)
+newdt1<-separate(sumstats,SNP_hg18,c("CHR","POS"),sep=":")
+head(newdt1)
 ```
 
 ```{r}
-newdt$chr2 <- as.numeric(gsub("chr","",newdt$CHR))
-newdt$pos2 <- as.numeric(gsub("POS","",newdt$POS))
-newdt$P <- newdt$`P-value`
-newdt <- newdt[newdt$P > 10^(-100),]
-newdt <- newdt[complete.cases(newdt),]
-qqman::manhattan(newdt, chr="chr2",bp = "pos2",p="P-value")
+newdt1$chr2 <- as.numeric(gsub("chr","",newdt1$CHR))
+newdt1$pos2 <- as.numeric(gsub("POS","",newdt1$POS))
+newdt1$P <- newdt1$`P-value`
 ```
-
 
 ```{r}
-df2<-gsub("CHR","",df$CHR)0.
-head(df$CHR)
+newdt1 <- newdt1[newdt1$P > 10^(-100),]
+newdt1 <- newdt1[complete.cases(newdt1),]
+qqman::manhattan(newdt1, chr="chr2",bp = "pos2",p="P-value", main = "Manhattan Plot", ylim = c(0, 10), cex = 0.6, 
+    cex.axis = 0.9, col = c("blue4", "orange3") )
 ```
 
-#as numeric
-## df<-df[df$p>10^(-100),]
-
-## Manhattan plot 
-```{r manhat, cache = TRUE, echo = TRUE, eval=TRUE, fig.height = 8, warning = FALSE, message = FALSE, fig.width = 13, fig.cap = "Manhattan plot of summary statistics", fig.align = "center"}
-#library(qqman)
-qqman::manhattan(newdt, bp = "POS")
-```
-
+### The Chromosome number of 1,2,3,5,6,7,8,9,10,11,12,13,16,17,19,20,22 appear to have genome-wide significant hits.
 
 ## QQ Plot
 ```{r qq, cache = TRUE, echo = TRUE, eval=TRUE, fig.height = 8, fig.width = 8, fig.cap = "qqplot of summary statistics", fig.align = "center"}
-qqman::qq(sumstats$P)
+qqman::qq(newdt1$P)
 ```
-_Hint: use the _**qqman** _package in **R** to visualize the data, which can be accessed through_ **LDHub**. 
-
-###qqman
 
 \newpage
 
@@ -74,11 +67,69 @@ _Hint: use the Metabochip summary statistics can be found on the same page as th
 
 
 
+# the Metabochip
+#1 Mc_LDL.txt.gz
+```{r parse1, eval = TRUE, echo = TRUE, message = FALSE, warning = FALSE, cache = TRUE}
+pathToDataFile <- "/Users/uchimidouryou/Documents/HSPH:MIT:Catalyst/BST227/HW1_1031/Mc_LDL.txt.gz"
+sumstats2 <- as.data.frame(data.table::fread(paste0("zcat < ", pathToDataFile), showProgress = FALSE))
+head(sumstats2)
+```
+
+```{r}
+newdt2<-separate(sumstats2,SNP_hg18,c("CHR","POS"),sep=":")
+head(newdt2)
+```
+
+
+```{r}
+newdt2$chr2 <- as.numeric(gsub("chr","",newdt2$CHR))
+newdt2$pos2 <- as.numeric(gsub("POS","",newdt2$POS))
+newdt2$P <- newdt2$`P-value`
+```
+
+
+```{r}
+newdt2 <- newdt2[newdt2$P > 10^(-100),]
+newdt2 <- newdt2[complete.cases(newdt2),]
+qqman::manhattan(newdt2, chr="chr2",bp = "pos2",p="P-value", main = "Manhattan Plot", ylim = c(0, 10), cex = 0.6, 
+    cex.axis = 0.9, col = c("blue4", "orange3") )
+```
+## The Chromosome number of 1,2,3,5,6,7,8,9,11,12,16,19,20 appear to have genome-wide significant hits.
+
+## QQ Plot
+```{r qq, cache = TRUE, echo = TRUE, eval=TRUE, fig.height = 8, fig.width = 8, fig.cap = "qqplot of summary statistics", fig.align = "center"}
+qqman::qq(newdt2$P)
+```
+
+
 \newpage
 
 # Problem 3
 **Compute the measure of systematic inflation ($\lambda_{GC}$) associatd with the summary statistics in Problem 1 and Problem 2. For which SNP array are the summary statistics more inflated? **
 
 _Hint:_  $\lambda_{GC}$ = median($\chi^2$) `/ 0.4549364` _where the last number comes from_ `qchisq(0.5,1)`
+
+### The measure of systemic inflation is  genomic inflation factor, also known as lambda. 
+
+```{r}
+# Calculating lambda of the summary statistics in problem 1
+chisq1 <- qchisq(1-newdt1$P,1)
+lambda1 = median(chisq1)/qchisq(0.5,1)
+lambda1
+```
+
+```{r}
+# Calculating lambda of the summary statistics in problem 2
+chisq2 <- qchisq(1-newdt2$P,1)
+lambda2 = median(chisq2)/qchisq(0.5,1)
+lambda2
+```
+
+###From the result above, the lambda  in problem 2 is greater than those in problem 1. SNP array in problem 2 appears mor e inflated.  
+
+
+
+
+
 
 \newpage

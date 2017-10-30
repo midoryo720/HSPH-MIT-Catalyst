@@ -1,0 +1,310 @@
+---
+title: "HST.953 Workshop Regression Pset4"
+author: "Ryo uchimido"
+date: "10/27/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(Hmisc)
+```
+
+```{r}
+dat <- read.csv("/Users/uchimidouryou/Documents/aline-dataset.csv")
+
+dim(dat)
+
+dat$age.cat <- cut2(dat$age,g=4)  
+# Added so the file will compile.  You will need to update this variable later on.
+
+dat$service_unit2 <- dat$service_unit=="MICU"  
+# Added so the file will compile.  You will need to update this variable later on.
+```
+
+### Student Question 1:
+
+> a) Make an appropriate plot to visual SOFA scores `sofa_first` by service unit (`service_unit`).
+```{r}
+plot(dat$service_unit,dat$sofa_first)
+```
+> b) Some of the services have small number of patients.  Create a new variable called `service_unit2` with any service with less than 200 patients lumped into a new category, "Other".  Plot these new categories as you did in part a).  Comment briefly about any conclusions you would draw based on the figure.
+
+```{r}
+summary(dat$sofa_first)
+summary(dat$service_unit)
+```
+```{r}
+dat$service_unit2 <- "Others"
+dat$service_unit2[dat$service_unit == "MED"] <- "MED"
+dat$service_unit2[dat$service_unit == "NMED"] <- "NMED"
+dat$service_unit2[dat$service_unit == "NSURG"] <- "NSURG"
+dat$service_unit2[dat$service_unit == "SURG"] <- "SURG"
+dat$service_unit2[dat$service_unit == "TRAUM"] <- "TRAUM"
+dat$service_unit2 <- as.factor(dat$service_unit2)
+```
+
+###why do we need to convert dat$service_unit2 to a factor?###
+
+```{r}
+summary(dat$service_unit2)
+```
+```{r}
+plot(dat$service_unit2,dat$sofa_first)
+```
+
+### The median levels of the sofa score in MED, SURG apperears to be higher than those of NMED,NSURG and TRAUM.However, there is no statistical test. 
+
+> c) Fit a regression with `sofa_first` as the outcome and `service_unit2` as a covariate.  Pick one service unit, explain what the estimated coefficient means, include a 95\% confidence interval and a p-value.
+
+```{r}
+install.packages("TMB")
+```
+
+```{r}
+library(sjPlot)
+```
+
+```{r}
+devtools::install_github("strengejacke/strengejacke")
+```
+```{r}
+library(sjPlot)
+```
+
+```{r}
+sofa.serviceunit2.lm <- lm(I(dat$sofa_first) ~ I(dat$service_unit2),data=dat,na.action = na.exclude)
+summary(sofa.serviceunit2.lm)
+confint(sofa.serviceunit2.lm)
+sjp.lm(sofa.serviceunit2.lm, type="coef")
+```
+
+### "MED" has a sginififantly higher median level of sofa socore,, compaered to "TRAUMA" ( Risk ratio; -0.95(-1.22, -0.67), p<0.0001).
+
+> d) Conduct a hypothesis test to assess if the mean SOFA score is the same for all service units.
+
+```{r}
+anova(sofa.serviceunit2.lm)
+drop1(sofa.serviceunit2.lm, test = "F")
+```
+
+### From the result above, there is a significant dirrence of the mean SOFA score amomg all service units. drop1(sofa.serviceunit2.lm, test = "F") 
+
+> e) Add the `log(bun_first)` to your model in part c) (you do not need to consider an interaction).  
+Test if the coefficient for `log(bun_first)` is zero.  Interpret this new effect.
+
+```{r}
+sofa.serviceunit2.logbun.lm <- lm(I(dat$sofa_first) ~ I(dat$service_unit2) + log(bun_first), data = dat)
+summary(sofa.serviceunit2.logbun.lm)
+```
+
+```{r}
+anova(sofa.serviceunit2.lm,sofa.serviceunit2.logbun.lm)
+```
+```{r}
+drop1(sofa.serviceunit2.logbun.lm,test = "F")
+```
+## the null hypothesis that thecoefficient for `log(bun_first)` is zero is rejected.Bun at ICU admission DAY1 is significantly related to SOFA score at the same day.
+
+
+
+
+
+
+### Student Question 2:
+
+> a)  Fit a logistic regression between `aline_flg` and in hospital death (`hosp_exp_flg`).  Interpret and briefly explain the results of this model.
+```{r}
+aline.glm2 <- glm(hosp_exp_flg ~ aline_flg, data=dat, family = "binomial")
+summary(aline.glm2)
+```
+> b) Fit a model with `age` as a continuous covariate for the same outcome (`hosp_exp_flg`).  Check to see if this is an appropriate form to use age in the model.
+
+```{r}
+aline.age.glm2 <- glm(hosp_exp_flg ~ aline_flg + age, data=dat, family = "binomial")
+summary(aline.age.glm2)
+```
+
+> c) You can fit a model in a subset of the data using the `subset` parameter in `glm`.  For example, `subset=age<100`, includes only patients with age less than 100 in the model fit.  Repeat b), in this subset.  Do your results change?  Why or why not?
+
+```{r}
+aline.age_100.glm2 <- glm(hosp_exp_flg ~ aline_flg + (subset = age<100), data=dat, family="binomial")
+summary(sofa.age_100.glm2)
+```
+
+> d) Regardless of your response in c), fit a logistic regression with age as a categorical variable (column) called `age.cat` using the `cut2` function and  `cuts` argument: `c(50,60,70,80)`, and the `aline_flg` variable for the `hosp_exp_flg` outcome.  Interpret and present your results.  Perform a hypothesis test two ways for the effect of `aline_flg`.  Use the entire data set, i.e., without any subset argument.
+
+```{r}
+library(MIMICbook); library(Hmisc)
+dat$age.cat <- cut2(dat$age,c(50,60,70,80))
+table(dat$age.cat)
+
+aline.age_cat.glme2 <- glm(hosp_exp_flg ~ dat$age.cat + aline_flg , data = dat, family = "binomial")
+summary(aline.age_cat.glme2)
+
+age.glme2 <- glm(hosp_exp_flg ~ age, data = dat, family = "binomial")
+age_cat.glme2 <- glm(hosp_exp_flg ~  dat$age.cat, data = dat, family = "binomial")
+
+anova(age.glme2,aline.age.glm2, test="Chisq")
+anova(age_cat.glme2,aline.age_cat.glme2, test="Chisq")
+drop1(aline.age_cat.glme2, test = "Chisq")
+
+## I am not sure of the meanig of a hypothesis test two ways for the effect of `aline_flg`
+```
+> e) For the first model fit in part d), explain in no more than 50 words what the intercept means in this model.
+
+
+```{r}
+aline.age_cat.glme2 <- glm(hosp_exp_flg ~ aline_flg + dat$age.cat, data = dat, family = "binomial")
+summary(aline.age_cat.glme2)
+
+names(aline.age.glm2)
+exp(coef(aline.age.glm2))
+exp(confint(aline.age.glm2))
+```
+### Student Answer 2-d:
+Exp(intercept;beta0) means an odds of the hospital mortality for patinets who has no aline and 0 years old.
+
+
+
+
+
+
+
+
+### Student Question 3:
+
+> a) From the above output continue with the procedure we specified and began above.  Make sure to document the entire process.  Describe and interpret your final model, and discuss whether you think that after adjusting for these effects, `aline_flg` has any statistically significant impact on the outcome.
+```{r}
+dat$sofa_cat <- cut2(dat$sofa_first,c(0,4,7))
+
+base.glm <- glm(day_28_flg ~ aline_flg,data=dat,family="binomial")
+add1(base.glm,scope = ~ . + age.cat + sofa_cat + service_unit2 + renal_flg + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg, test="Chisq")
+
+fit2.glm <- update(base.glm, .~. + age.cat)
+add1(fit2.glm,scope = ~ . + age.cat +  sofa_cat + service_unit2 + renal_flg + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg, test="Chisq")
+
+fit3.glm <- update(fit2.glm, .~. + service_unit2)
+add1(fit3.glm,scope = ~ . + age.cat + sofa_cat + service_unit2 + renal_flg + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg, test="Chisq")
+
+fit4.glm <- update(fit3.glm, .~. + stroke_flg)
+add1(fit4.glm,scope = ~ . + age.cat + sofa_cat + service_unit2 + renal_flg + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg, test="Chisq")
+
+fit5.glm <- update(fit4.glm, .~. + mal_flg)
+add1(fit5.glm,scope = ~ . + age.cat + sofa_cat + service_unit2 + renal_flg + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg, test="Chisq")
+
+fit6.glm <- update(fit5.glm, .~. + resp_flg)
+add1(fit6.glm,scope = ~ . + age.cat + sofa_cat + service_unit2 + renal_flg + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg, test="Chisq")
+
+fit7.glm <- update(fit6.glm, .~. + chf_flg)
+add1(fit7.glm,scope = ~ . + age.cat + sofa_cat + service_unit2 + renal_flg + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg, test="Chisq")
+
+fit8.glm <- update(fit7.glm, .~. + sofa_cat)
+add1(fit8.glm,scope = ~ . + age.cat + sofa_cat + service_unit2 + renal_flg + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg, test="Chisq")
+
+fit9.glm <- update(fit8.glm, .~. + cad_flg)
+add1(fit9.glm,scope = ~ . + age.cat + sofa_cat + service_unit2 + renal_flg + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg, test="Chisq")
+```
+
+```{r}
+summary(fit9.glm)
+drop1(fit9.glm,test="Chisq")
+exp(coef(fit9.glm))
+exp(confint(fit9.glm))
+```
+```{r}
+anova(base.glm,fit9.glm,test="Chisq")
+anova(fit8.glm,fit9.glm,test="Chisq")
+```
+
+### In terms of predicting the 28 days hospital mortality, between the model with only one cocariate;aline_flg and the model with alien_flg  + age.cat + service_unit2 + stroke_flg + mal_flg + resp_flg + chf_flg + sofa_cat + cad_flg, there is a siginificant difference. Therefore, by adjsuting the cocariants;`age.cat, service_unit2, stroke_flg, mal_flg, resp_flg, chf_flg, sofa_cat, cad_flg` we can get the model which explain our date more precisely than the model with only one cocariate;aline_flg.
+
+"after adjusting covariants; 
+### Form the final model, Indwelling a-line is not significantly assciated with the hospital mortality(OR 0.97, 95%CI 0.74-1.26). Patients in the surgical ICU have a significantly lower hospital mortality, compaered to the medical ICU(OR 0.24, 95%CI 0.10-0.50). <<this satetment is not perfect. I think I have to tell fit9.glm is nicer model than fit1-8.glm>>
+
+> b) Create a odds ratio plot of the final model in a).
+
+```{r}
+exp(confint(fit9.glm))
+sjp.glm(fit9.glm)
+```
+
+
+> c) There are many other ways to do model selection, including automated procedures.  We would _not_ encourage you to use these automated methods as a first line of model selection, but can be useful for seeing if your result is robust to alternative procedures.  One such way to do this is to specifying a full model, and then perform model selection based on some pre-defined criteria.  For example, if `full.model` is your model with all variables in it, `stepAIC` in the `MASS` package will perform stepwise selection based on the Akaike Information Criteria.
+> Fit a model with all variables we considered in the forward selection (the 'full model').  Run `stepAIC` on this model with a `scope=list(lower=~aline_flg)` argument.
+
+```{r}
+install.packages("MASS")
+library(MASS)
+```
+
+```{r}
+full.model=glm(day_28_flg ~ aline_flg +  + age.cat + sofa_cat + service_unit2 + renal_flg + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg, data = dat,family = "binomial")
+full.model.setpAIC<-stepAIC(full.model, scope=list(lower=~aline_flg))
+summary(full.model.setpAIC)
+```
+
+> d) Another criteria is the BIC (or Bayesian Information Criteria).  Repeat step c), but add an additional argument: `k=log(n)`, where `n` needs to be the number of rows in the dataset. How does this model compare with your parts a) and c)?  Does this conform with what is known about AIC and BIC? 
+
+```{r}
+nrow(dat)
+```
+
+```{r}
+full.model.setpBIC<-stepAIC(full.model, scope=list(lower=~aline_flg),k=log(2751))
+summary(full.model.setpBIC)
+```
+
+### potential confounders:
+
+1. age (<50, 50-60, 60-70,70-80, >80)
+2. sofa (0-4, 4-6, >7)
+3. service_unit (as defined earlier in this workshop for `service_unit2`)
+4. Binary co-morbidities: `renal_flg`, `chf_flg`, `cad_flg`, `stroke_flg`, `mal_flg`, `resp_flg`.
+
+###Step wise,forward
+day_28_flg ~ aline_flg + age.cat + sofa_cat + service_unit2 + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg 
+`renal_flg`
+###AIC
+day_28_flg ~ aline_flg + age.cat + sofa_cat + service_unit2 + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg
+`renal_flg`
+###BIC
+day_28_flg ~ aline_flg + age.cat +                            chf_flg +           stroke_flg + mal_flg + resp_flg
+`renal_flg` `sofa_cat`  `service_unit2` `cad_flg ` 
+
+### to compare the perfomance of model, I will do anova
+
+```{r}
+anova(fit9.glm,full.model.setpAIC,test = "Chisq")
+anova(fit9.glm,full.model.setpBIC,test = "Chisq")
+anova(full.model.setpBIC,full.model.setpAIC,test = "Chisq")
+
+```
+
+### From the result of anova(partial F test),the step wise model and AIC model have the same performance as the prediction model. The same ability to predict the 28 days mortality. 
+### The setp wise model, as well AIC model, has significant diffrenct ability to predict the hospital mortality from the BIC model. Howeverm I have no ideat to tell tell which is a better model.
+
+> e) Which model would you choose as the model you would present?  Why?  What other criteria would you like to use? (don't do these)  Does it make a difference from drawing any conclusions from the main study objective?
+
+### sorry, I have no knowledte to adress this question.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
