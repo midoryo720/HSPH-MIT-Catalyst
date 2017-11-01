@@ -1,3 +1,8 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -34,7 +39,7 @@ head(sumstats1)
 ```
 
 ```{r}
-newdt1<-separate(sumstats,SNP_hg18,c("CHR","POS"),sep=":")
+newdt1<-separate(sumstats1,SNP_hg18,c("CHR","POS"),sep=":")
 head(newdt1)
 ```
 
@@ -51,7 +56,7 @@ qqman::manhattan(newdt1, chr="chr2",bp = "pos2",p="P-value", main = "Manhattan P
     cex.axis = 0.9, col = c("blue4", "orange3") )
 ```
 
-### The Chromosome number of 1,2,3,5,6,7,8,9,10,11,12,13,16,17,19,20,22 appear to have genome-wide significant hits.
+### The Chromosome number of 1,2,3,4,5,6,7,8,9,10,11,12,13,16,17,19,20,22 appear to have genome-wide significant hits.
 
 ## QQ Plot
 ```{r qq, cache = TRUE, echo = TRUE, eval=TRUE, fig.height = 8, fig.width = 8, fig.cap = "qqplot of summary statistics", fig.align = "center"}
@@ -69,7 +74,7 @@ _Hint: use the Metabochip summary statistics can be found on the same page as th
 
 # the Metabochip
 #1 Mc_LDL.txt.gz
-```{r parse1, eval = TRUE, echo = TRUE, message = FALSE, warning = FALSE, cache = TRUE}
+```{r}
 pathToDataFile <- "/Users/uchimidouryou/Documents/HSPH:MIT:Catalyst/BST227/HW1_1031/Mc_LDL.txt.gz"
 sumstats2 <- as.data.frame(data.table::fread(paste0("zcat < ", pathToDataFile), showProgress = FALSE))
 head(sumstats2)
@@ -97,7 +102,7 @@ qqman::manhattan(newdt2, chr="chr2",bp = "pos2",p="P-value", main = "Manhattan P
 ## The Chromosome number of 1,2,3,5,6,7,8,9,11,12,16,19,20 appear to have genome-wide significant hits.
 
 ## QQ Plot
-```{r qq, cache = TRUE, echo = TRUE, eval=TRUE, fig.height = 8, fig.width = 8, fig.cap = "qqplot of summary statistics", fig.align = "center"}
+```{r cache = TRUE, echo = TRUE, eval=TRUE, fig.height = 8, fig.width = 8, fig.cap = "qqplot of summary statistics", fig.align = "center"}
 qqman::qq(newdt2$P)
 ```
 
@@ -109,7 +114,7 @@ qqman::qq(newdt2$P)
 
 _Hint:_  $\lambda_{GC}$ = median($\chi^2$) `/ 0.4549364` _where the last number comes from_ `qchisq(0.5,1)`
 
-### The measure of systemic inflation is  genomic inflation factor, also known as lambda. 
+### A measure of systemic inflation is  genomic inflation factor, also known as lambda. 
 
 ```{r}
 # Calculating lambda of the summary statistics in problem 1

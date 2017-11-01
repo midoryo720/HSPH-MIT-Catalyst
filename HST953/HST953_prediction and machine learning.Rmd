@@ -1,0 +1,341 @@
+---
+title: "HST.953 Workshop 11: Prediction and Machine Learning"
+author: "Your Name Here"
+date: "Oct 28, 2016"
+output: 
+  html_document: 
+    fig_height: 8
+    fig_width: 10
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#setwd("~/data/HST.953") # Students will need to set their own path or see below
+
+```
+
+## Instructions:
+
+For those students taking the course for credit, the work done during this workshop is to be handed in.  Please e-mail both your `Rmd` source file and `html` output to hst953hw@mit.edu no later than Friday Nov 4, 2016.
+
+*To complete the assignment, fill in necessary code in the places indicated with `# Students: Insert your code here` and text based answers `### Student Answer` *
+
+**Before beginning**, please test to see if the Rmd file will compile on your system by clicking the "Knit HTML button" in R studio above.
+
+## Prediction
+
+Prediction usually refers to using a statistical model to determine the expectation of different outcomes for patient with a set of covariate and confounder values.  For example, let's load the aline dataset from the previous workshop.
+
+```{r}
+dat <- read.csv("aline-dataset.csv")
+library(plyr);library(Hmisc)
+dat$sofa_cat <- cut2(dat$sofa_first,c(0,4,7))
+dat$age.cat <- cut2(dat$age,c(50,60,70,80))
+dat$service_unit2 <- as.character(dat$service_unit)
+dat$service_unit2[dat$service_unit2 %in% names(which(table(dat$service_unit)<200))] <- "Other"
+
+```
+
+Let's fit the full model we considered for 28 day mortality in the previous workshop.
+
+```{r}
+full.model.glm <- glm(day_28_flg ~ aline_flg + age.cat + sofa_cat + service_unit2 + renal_flg + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg,data=dat,family="binomial")  #Note: used service_unit instead of service_unit2
+summary(full.model.glm)
+```
+
+Imagine we have a patient just like the patient in `hadm_id=137140`:
+
+```{r}
+new.pt <- subset(dat,hadm_id==137140)
+new.pt
+```
+
+and we'd like to know the patient's chance of survival at 28 days, we can estimate this by using the predict function, which takes
+
+
+```{r}
+predict(full.model.glm,newdata=new.pt,type="response")
+```
+
+Based on this model, we would predict that the probability of death for this patient would be around 0.16, meaning that they have about a 84\% chance of surviving, but how good is this prediction?  We can do predictions for every patient in the dataset and add it as a new column in the `dat` data frame, and then plot the distribution of these predictions.:
+
+```{r}
+dat$logRegPred <- predict(full.model.glm,newdata=dat,type="response")
+hist(dat$logRegPred,breaks=11)
+```
+
+Here we see that the model predicts that most patients have a fairly low risk of dying, while some patients have a very high risk of dying.  One way of looking at how good this prediction is, is by looking at the accuracy (how often we would predict the right outcome).  To do this we need to specify a cutoff above which we make a binary prediction that the patient is likely to die, and below which we predict that the patients will live.  Let's say, we set this cut-off at 0.5:
+
+
+```{r}
+dat$logRegPred0.5 <- dat$logRegPred>0.5
+```
+
+Then use the `table` function to see how the outcomes are distributed across our two predictions:
+
+
+```{r}
+predTab1 <- table(dat$logRegPred0.5,dat$day_28_flg==1,dnn=c("Prediction","Death by 28 Days"))
+predTab1
+```
+
+The *accuracy* is the times where our prediction matched the actual outcome.  This corresponds to the diagonal elements of the 2x2 table.  In our case, `r sum(diag(predTab1))/sum(predTab1)`.  Is this good?
+
+That can be a complicated question.  
+
+1. If we had just picked to predict that everyone lives, our accuracy would be almost as good: `r sum(dat$day_28_flg==0)/length(dat$day_28_flg)`.
+2. It's unclear whether `0.5` is the "right" threshold.
+3. We are making predictions on the same observations we used to train our data.  This can make the performance a little to optimistic.
+
+Let's tackle each of these in reverse order.
+
+## Training, testing and all that
+
+When we train a model using `glm` or any other algorithm, were are optimizing the performance for this training dataset, and it's unlikely that the performance will be as rosy when it is applied to unseen data.
+
+Let's explore this a little further.  We will divide the `dat` data frame into two datasets: `datTrain` and `datTest`, by randomly selecting ICU stays to be in each, so that about 50\% of our data is in the training dataset and about 50\% is contained in the testing dataset.
+
+We first set a seed which makes any random selections reproducible.  Then we use the `createDataPartition` function to sample indexes in the `dat` data frame to include in `datTrain`.  Then we use these indexes to establish training (`datTrain`) and testing (`datTest`) datasets.
+
+```{r}
+set.seed(4441)  # We do this so it's reproducible!
+library(caret)
+trainIdx <- createDataPartition(dat$day_28_flg,p=0.5)$Resample1
+datTrain <- dat[trainIdx,]
+datTest <- dat[-trainIdx,]
+```
+
+Repeating the `glm` fit we looked at in the previous section, but use only the `datTrain` observations:
+
+
+```{r}
+train.glm <- glm(day_28_flg ~ aline_flg + age.cat + sofa_cat + service_unit2 + renal_flg + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg,data=datTrain,family="binomial")
+summary(train.glm)
+```
+
+Let's create predictions for this model in the training dataset:
+
+```{r}
+datTrain$logRegPred <- predict(train.glm,newdata=datTrain,type="response")
+datTrain$logRegPred0.5 <- datTrain$logRegPred>0.5
+
+predTabTr <- table(datTrain$logRegPred0.5,datTrain$day_28_flg==1,dnn=c("Prediction","Death by 28 Days"))
+predTabTr
+```
+
+Accuracy is pretty similar to that when using the whole dataset: `r sum(diag(predTabTr))/sum(predTabTr)`.
+
+Now, let's try it on the testing dataset.  This is a dataset which was *not* used to build the model on, so it's a better assessment of the performance of the prediction algorithm:
+
+
+```{r}
+datTest$logRegPred <- predict(train.glm,newdata=datTest,type="response")
+datTest$logRegPred0.5 <- datTest$logRegPred>0.5
+
+predTabTe <- table(datTest$logRegPred0.5,datTest$day_28_flg==1,dnn=c("Prediction","Death by 28 Days"))
+predTabTe
+```
+
+Here the accuracy is about `r sum(diag(predTabTe))/sum(predTabTe)`, which is slightly less than that in the training dataset.  This discrepancy between training and test set performance is not that large, but in many circumstances, it can be very significant.
+
+## ROC Curves.
+
+In the previous section, we again used 0.5 as a threshold, but this was completely arbitrary, and may not be a good cutoff for our particular application.
+
+Looking back at `predTabTe`, if look at those who survived, we correctly predicted their survival in `r predTabTe[1,1]` cases, or about `r round(predTabTe[1,1]/(predTabTe[1,1] + predTabTe[2,1])*100,1)`\% of cases.  As for those who died, we only correctly predicted their survival in `r round(predTabTe[2,2]/(predTabTe[1,2] + predTabTe[2,2])*100,2)`\% of cases.
+
+Our accuracy measure is only good, because we have far more survivors in this population of patients than deaths.  These two quantities we calculated are often called the specificity (for survivors, \% of time we correctly predict them as survivors, aka true negative rate), and the sensitivity (for deaths, \% of time we correctly identified them as patients who died, aka true positive rate).
+
+We of course picked 0.5 as a cutoff, but this is arbitrary.  One way of getting around the arbitrariness of this, is to evaluate all potential cutoffs through an *Receiver Operator Characteristic Curve* (ROC curve).
+
+ROC curves plot 1-specificity vs. the sensitivity of the algorithm for predicting the outcome, while varying the cutoffs used to define the predictions.  Evaluation is usually done with the area under the curve, with AUC of 1 indicating perfect prediction, and an AUC of 0.5, being no better than "flipping a coin".
+
+For our training and test datasets, the ROC curves and AUCs are presented below.
+
+```{r}
+library(ROCR)
+predTr <- prediction(datTrain$logRegPred,datTrain$day_28_flg)
+perfTr <- performance(predTr,"tpr","fpr")
+plot(perfTr)
+text(0.6,0.2,paste0("AUC: ", round(performance(predTr,"auc")@y.values[[1]],3)))
+
+predTe <- prediction(datTest$logRegPred,datTest$day_28_flg)
+perfTe <- performance(predTe,"tpr","fpr")
+lines(perfTe@x.values[[1]],perfTe@y.values[[1]],col='red')
+text(0.6,0.1,paste0("AUC: ", round(performance(predTe,"auc")@y.values[[1]],3)),col='red')
+```
+
+Here we can see a few important things:
+
+1. The AUC for the test set (red) is slightly lower than the AUC for the training set (black), as expected.
+2. There is a trade off between sensitivity and specificity.  We we want increased sensitivity (y-axis), we will likely lose some specificity (x-axis).  If, for example, we needed 80\% sensitivity, we would have a false positive rate of about 20\%, or about 80\% specificity.  When you get to implementing your algorithm, this trade-off needs to be discussed with stakeholders to assess what an appropriate cutoff might be, as it's unlikely that sensitivity and specificity are equally weight.
+
+
+## Calibration
+
+ROC curves tell us about discrimination (how well we are able to distinguish between survivors and deaths), but an equally important aspect is the calibration of our model.  For example, if we say that a patient has a 99\% chance of dying, and while this patient is at higher risk of dying than the average patient, the actual risk is far less than 99\% (e.g., 20\%), then our model is not calibrated.
+
+There are qualitative and quantitative assessments of calibration.  A qualitative assessment can be done using the `calibrate.plot` function in the `gbm` package:
+
+
+```{r}
+#install.packages("gbm") # if this chunk fails, install gbm package
+prop.table(table(datTrain$day_28_flg,cut2(datTrain$logRegPred,seq(0,1,0.1))),2)
+gbm::calibrate.plot(datTrain$day_28_flg,datTrain$logRegPred)
+prop.table(table(datTest$day_28_flg,cut2(datTest$logRegPred,seq(0,1,0.1))),2)
+gbm::calibrate.plot(datTest$day_28_flg,datTest$logRegPred)
+```
+
+
+
+More formal testing can be done using the Hosmer-Lemeshow test (see `?hoslem_gof` in the `sjstats` package).  Beware: the null hypothesis is that the model fits the observed data!
+
+
+
+### Student Question 1:
+
+> a) Moving towards a topic which we will begin next week, sometimes in observational data, we want to model who gets the treatment (or more generally who gets exposed).  With this in mind, you might find it useful to build a model to predict treatment.  Build a 'full model' with the variables we used above, using `aline_flg` as the response ('outcome') and all other variables as predictors (covariates), except do not include `aline_flg` or `day_28_flg` as predictors.  Report the accuracy of this test using the 0.5 cutoff, and give an estimate of the accuracy of a 'baseline' model (one which uses no covariates).
+
+
+> b) Repeat part a), but use the training set we defined above to fit the model.  Evaluate the accuracy of the model as in a) in both the training and test sets.
+
+> c) Plot an ROC curve for the training and test sets.
+
+> d) Assess the calibration of the model in both the training and test sets.
+
+
+
+
+```{r}
+# Students: put your code here
+
+```
+
+
+### Student Answer 1:
+
+Answer here.
+
+## The Caret Package
+
+There are a variety of additional methods that can be used for prediction of a variety of different outcome types.  Moreover there are also several ways to evaluate model fits or tune parameters.  The `caret` package is a flexible and powerful packages which provides a unified framework for building, evaluating and tuning models.
+
+Thus far we have focused evaluation using a held out test set.  In the examples we have worked through thus far, we have not had to choose any tuning parameters.  Tuning parameters are present in many prediction/machine learning algorithms, and there usually is no good a priori way to pick which parameter will make the algorithm work best.
+
+To help us choose, we will utilize a validation set (or rather validation sets).  k-fold cross validation is a frequently used technique to help choose a tuning parameter and give a preliminary assessment of how well the data will perform on data not used to train the model on.  k-fold cross validation involves:
+
+1. Partitioning the data into $k$ mutually exclusive sets.
+2. For a variety of tuning parameters, fit the model $k$ times, where for each $k$,  a model is fit using all data except the $k^{th}$ set, which is held out.  After the model is fit on the non-$k$ set, predictions are done in the $k^{th}$ set, and then it is evaluated for performance.  At each value of the tuning parameter, the $k$ performance measures are summarized (often by averaging).
+
+
+Normally to do this manually would require you to partition the data, build the models, evaluate them, choose the best tuning parameter, and summarize the performance.  The `caret` package lets you do this all quite easily and run it on a variety of different approaches.
+
+We first need to tell `caret` how we wish to do the cross-validation.  `caret` also lets you use a few other methods instead of cross validation, but cross validation is the most common.  The `trainControl` function call below tells caret we wish to evaluate the models using cross-validation ("cv"), and use $k=5$.  We include the last two arguments (`classProbs` and `summaryFunction`) to allow `caret` to pick the best model based on area under the ROC curve.
+
+```{r}
+library(caret);
+
+cvTr <- trainControl(method="cv",number=5,classProbs = TRUE,summaryFunction=twoClassSummary)
+
+```
+
+Now we will run the training and evaluation code.  This is done similarly to how you would fit a logistic regression, but using the `train` function, and one additional parameter, `trControl`, which we will pass `cvTr` to, which we created above.
+
+`train` can be pretty picky about the types of data it allows.  Best to convert binary 0/1 data to a factor with difference labels.  For example,
+
+```{r}
+dat$day_28_flg <- as.factor(ifelse(dat$day_28_flg==1,"Died","Survived"))
+mort.tr.logit <- train(day_28_flg ~ aline_flg + age.cat + sofa_cat + service_unit2 + renal_flg + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg,data=dat,family="binomial",method="glm",trControl=cvTr,metric="ROC")
+print(mort.tr.logit)
+```
+
+There are no tuning parameters for this model, so the output is pretty basic. You can run `summary` to get information about the logistic regression model fit, and do predictions very similar to how we did it before.
+
+```{r}
+summary(mort.tr.logit)
+dat$mort.tr.logit.pred <- predict(mort.tr.logit,newdata=dat,type="prob")
+
+```
+
+Next, you might think about simplifying the model, using AIC or some other metric.  `caret` will do this as well, just replace the method with `glmStepAIC`:
+
+```{r}
+
+mort.tr.logitaic <- train(as.factor(day_28_flg) ~ aline_flg  + age.cat + sofa_cat + service_unit2 + renal_flg + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg,data=dat,family="binomial",method="glmStepAIC",trControl=cvTr,metric="ROC",trace=0)
+print(mort.tr.logitaic)
+summary(mort.tr.logitaic)
+```
+
+Again we do not have a tuning parameter in this method, so we just get an estimate of the accuracy.
+
+There are many other methods, and we will demonstrate a few.  `glmnet` fits the logistic regression with penalization terms.  We will just use the default setting, which has two parameters which govern the penalization (see `?glmnet` for more details).
+
+This is our first technique which has tuning parameters.  The first plot below illustrates how the accuracy varies as we try different values of the tuning parameters.  Typically you would try many more than the nine we did below, but this is sufficient for a start.
+
+Additionally, a variable importance plot is also printed below.  Each `method` calculates importance differently, and you should see `varImp` to see how this is done for the method you use.
+
+```{r}
+mort.tr.logitglmnet <- train(as.factor(day_28_flg) ~ aline_flg + age.cat + sofa_cat + service_unit2 + renal_flg + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg,data=dat,family="binomial",method="glmnet",trControl=cvTr,metric="ROC")
+print(mort.tr.logitglmnet )
+plot(mort.tr.logitglmnet)
+plot(varImp(mort.tr.logitglmnet))
+```
+
+Random forests (`rf`) are an ensemble method which creates many simple decision trees using a technique called bagging.  We can also drop the `family="binomial"`.
+
+```{r}
+mort.tr.logitrf<- train(as.factor(day_28_flg) ~ aline_flg + age.cat + sofa_cat + service_unit2 + renal_flg + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg,data=dat,method="rf",trControl=cvTr,importance=TRUE,metric="ROC")
+print(mort.tr.logitrf )
+plot(mort.tr.logitrf)
+plot(varImp(mort.tr.logitrf))
+```
+
+Stochastic gradient boosting (`gbm`) uses a general technique known as boosting.
+
+```{r}
+mort.tr.logitgbm<- train(as.factor(day_28_flg) ~ aline_flg + age.cat + sofa_cat + service_unit2 + renal_flg + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg,data=dat,method="gbm",trControl=cvTr,verbose=FALSE,metric="ROC")
+print(mort.tr.logitgbm )
+plot(mort.tr.logitgbm)
+plot(varImp(mort.tr.logitgbm))
+```
+
+The default settings optimizes on the accuracy in the validation sets, and picks a value based on those.  The last step fits a model with the optimal tuning parameters with the complete dataset.  To access the predictions from this fit, we add new columns to the `dat` data frame:
+
+```{r}
+dat$predMort1 <- predict(mort.tr.logit,type="prob")[,2]
+dat$predMort2 <- predict(mort.tr.logitglmnet,type="prob")[,2]
+dat$predMort3 <- predict(mort.tr.logitrf,type="prob")[,2]
+```
+
+
+
+A complete list of methods you can use with `caret` is available:
+
+https://topepo.github.io/caret/modelList.html
+
+### Student Question 2:
+
+> a) Setup `caret` to fit a logistic regression model for `aline_flg`, similar to what you did earlier.  How do these results compare with what you did before?  Hint: Make sure your `aline_flg` variable is a factor (and doesn't have 0/1 levels) for this part and all other parts below (see above for an example).
+
+> b) Using `method="rf"`, set an additional argument in `train` to `tuneLength=5`, and run a random forest model for `aline_flg`.
+
+> c) Go to the link above.  Pick _one_ additional method not used thus far (note: the method should either be of type "Classification"	or "Dual Use").  Ones checked to work: `nnet`, `dnn`, `knn`, `xgbLinear` and `svmLinear2`, and use the default tuning length.  Comment on the performance. (Hint: `verbose=FALSE` or `trace=FALSE` suppresses the noisy output while fitting for some models.  If this fails, try wrapping the entire `train` call with `suppressMessages`.  `svmLinear2` needs also to add: `probability = TRUE`, adding maxit = 300 to `nnet` will make sure it fits properly.)
+
+> d) For a), b), and c) create a new column in the `dat` data frame for predictions from each method.  Using these predictions plot a ROC curves and compute the AUCs.  Try to put all lines on the same plot.  If you have difficulties, 3 separate plots is OK.  Why do the AUCs differ from those parts a)-c)?
+
+> e) Create a calibration plot for predictions in parts a)-c).  How well calibrated is each method?
+
+> f) Discuss which method had the best performance.  Imagine (hypothetically) you would like to develop an algorithm that would suggest an arterial line for types of patients who frequently get them (ignore the effectiveness of the procedure).  What additional steps might you want to do before deploying an algorithm "in the wild"?
+
+An aside: Some methods in part c) will perform badly in this dataset and default tuning parameters.  This does not mean that they are generally a bad method, and might not even be a bad method for this dataset, with the right tuning parameters.  It just goes to show that although these methods cannot be applied blindly, and sometimes finding the best way to construct these prediction algorithms is as much an art as a science.
+
+
+```{r}
+# Students: put your code here
+
+```
+
+
+### Student Answer 2:
+
+Answer here.
