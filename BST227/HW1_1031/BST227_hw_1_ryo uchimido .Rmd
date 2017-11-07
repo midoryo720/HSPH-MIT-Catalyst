@@ -11,9 +11,6 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r}
-install.packages("tidyr")
-```
 
 ```{r}
 library(tidyr)
@@ -38,11 +35,14 @@ Here, we'll do a basic exploration of the data before investigating the specific
 ```{r parse1, eval = TRUE, echo = TRUE, message = FALSE, warning = FALSE, cache = TRUE}
 pathToDataFile <- "/Users/uchimidouryou/Documents/HSPH:MIT:Catalyst/BST227/HW1_1031/jointGwasMc_LDL.txt.gz"
 sumstats1 <- as.data.frame(data.table::fread(paste0("zcat < ", pathToDataFile), showProgress = FALSE))
-head(sumstats1)
+
 ```
 
 ```{r}
+head(sumstats1)
 newdt1<-separate(sumstats1,SNP_hg18,c("CHR","POS"),sep=":")
+head(newdt1)
+newdt1$chr2 <- as.numeric(gsub("chr","",newdt1$CHR))
 head(newdt1)
 ```
 

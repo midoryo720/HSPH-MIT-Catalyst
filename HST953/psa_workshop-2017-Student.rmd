@@ -1,0 +1,256 @@
+---
+title: "Propensity Scores: Optional Problem Set"
+author: "J.D. Raffa"
+date: "Oct 27, 2017"
+output: html_document
+---
+
+## Instructions:
+
+For those students taking the course for credit, the work done during this workshop _can be_ be handed in for _extra credit_.  Please e-mail both your `Rmd` source file and `html` output to hst953hw@mit.edu no later than Nov 23, 2017.
+
+*To complete the assignment, fill in necessary code in the places indicated with `# Students: Insert your code here` and text based answers `### Student Answer` *
+
+**Before beginning**, please test to see if the Rmd file will compile on your system by clicking the "Knit HTML button" in R studio above.
+
+You will likely find it more useful to download the Rmd and html files and use them to complete the workshop. 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#setwd("~/data/HST.953")
+dat <- read.csv("aline-dataset.csv")
+nrow(dat)
+```
+
+We will be looking at propensity score analysis in this workshop and will need two new packages: `twang` and `MatchIt`.  We will also, make some standard modifications to the loaded data frame, so everyone is on the same page.
+
+```{r,warning=FALSE,message=FALSE}
+#install.packages(c("twang","MatchIt")) #If you haven't installed them already
+library(twang); library(MIMICbook);library(Hmisc); library(tableone); library(dplyr); library(MIMICbook); library(sjPlot); library(MatchIt)
+dat <- convert.bin.fac(dat)
+dat$service_unit2 <- as.character(dat$service_unit) #From last week's homework
+dat$service_unit2[dat$service_unit2 %in% names(which(table(dat$service_unit)<200))] <- "Other"
+dat$service_unit2 <- as.factor(dat$service_unit2)
+dat$aline_flg <- as.numeric(dat$aline_flg==1)
+```
+
+As mentioned in the class, a propensity scores is simply the probability of receiving the _treatment_ given the other (non-outcome) variables.  It is frequently used as a way to address concerns about confounding.  There are several propensity score packages in `R` and we will use the `twang` package, as it provides a rich set of tools.
+
+Some of this lab involves generating random variables, and it's a good idea when that occurs to set the seed, so that your analysis is reproducible.
+
+```{r}
+set.seed(100)
+```
+
+The propensity score software functions similarly to logistic regression or other machine learning software you learned about last week.  The main function is `ps`.  The technical aspects will be glossed over here, but it's essentially using stochastic gradient boosting (`gbm` method in `caret`) to try to find the optimal prediction model for `aline_flg`.  Optimal in our previous work meant finding the model with the highest accuracy or AUC ROC curve.  Here, we care about "balance".  We would like to create a situation that when we calculate our treatment effect, the possible confounders are balanced among treated and control groups.  In other words, when calculating our treatment effect, the treatment effect is estimated under this idealized situation where the potential for any measured confounders to introduce bias into our estimate is minimized.  This is sometimes hard to conceptualize, but may become a little more clear when we do an example.
+
+As stated, the process to specify our propensity score model should look very familiar.  Here we are fitting `aline_flg` on `age`, `sofa_first`, `chf_flg` and `gender_num`:
+
+```{r}
+scores.1 <- ps(aline_flg ~ age + sofa_first + chf_flg + gender_num,data=dat,verbose=FALSE)
+```
+
+To have a look at our balance for the confounders we considered, we use the `bal.table` function:
+
+```{r}
+bal.table(scores.1)$es.mean.ATE
+```
+
+This function will actually produce three tables, but we'll focus on the third ones (hence the `$es.mean.ATE`), which indicates how we will evaluate balance (`es` is short for effect size, and which type of estimator we want to use `ATE` is for average treatment effect -- the average difference in outcomes if everyone in the study was given the treatment vs. everyone was given the control.  This is a fictitious construct, and is not the only possibility.  Your choice will depend on your study objective).  
+
+In this case, we see a brief table comparing the means of different variables (`tx.mn` and `ct.mn`), and corresponding sample standard deviations (`tx.sd` and `ct.sd`) for this weighted construct.  The goal is that the means are close together, or if they are far apart, this is due to chance (assessed by the `p` column, which is a p-value).   Here all p-values are large, suggesting that these variables are well balanced.
+
+This package has some additional diagnostic plots. This is a plot showing how one of the tuning parameters (number of iterations in `gbm`) are used for each of the `es` and `ks` ways of evaluating balance:
+
+
+```{r}
+plot(scores.1,plots=1)
+```
+
+Here we see our first look at the propensity scores via a boxplot.  As a reminder: propensity scores are $P(aline_flg=1 | covariates)$.  You can see the scores are generally higher for treatment #2:
+
+
+```{r}
+plot(scores.1,plots=2)
+```
+
+Here we see how large the unbalances were for each of the variables under weighted (via functions of the propensity scores) and unweighted (naive) methods:
+
+```{r}
+plot(scores.1,plots=3)
+```
+
+Here are the p-values from the table above for weighted and unweighted cases for each of the variables.  Here the weighted cases have smaller p-values suggesting imbalanced, where the weighted p-values are near the 45 degree line, which is the goal.
+
+```{r}
+plot(scores.1,plots=4)
+```
+
+We have been discussing the weights used to calculate these quantities, and here they are:
+
+```{r}
+plot(scores.1,plots=6)
+```
+
+# Stratified Analysis with Propensity Scores
+
+To access the propensity scores, there is a item called `ps` in the `scores.1` object.  It has two types of propensity scores, and we'll use the `es.mean.ATE` column, and add it as a new column in our data frame.  I have also divided individuals into quintiles (5 groups ranked by propensity scores), where the the lowest quintile has the lowest chance of being treated with aline, and the highest one has a the highest chance of being treated with aline.
+
+```{r}
+dat$ps <- scores.1$ps[,2]
+dat$ps.groups <-cut2(dat$ps,g=5)
+table(dat$ps.groups)
+```
+
+As you can see, the groups are about equally sized.  The hope is that within each quintile, there is a high degree of homogeneity in each strata with respect to the confounders.  We need to assess this however, and to do this, we go back to our trusty `tableone` package.  Here we will assess each of the confounders within each quintile, comparing those who received an aline to those who didn't:
+
+```{r}
+library(tableone);library(dplyr)
+
+CreateTableOne(dat,vars=c("age","sofa_first","chf_flg","gender_num"),strata=c("aline_flg","ps.groups"),test=FALSE) %>% print(
+  printToggle      = FALSE,
+  showAllLevels    = TRUE,
+  cramVars         = "kon"
+) %>% 
+{data.frame(
+  variable_name             = gsub(" ", "&nbsp;", rownames(.), fixed = TRUE), ., 
+  row.names        = NULL, 
+  check.names      = FALSE, 
+  stringsAsFactors = FALSE)} %>% 
+knitr::kable()
+```
+
+This table is often reported in a research report to demonstrate that you've balanced between treatment and control within each of the propensity score strata.  Comparing pairs of columns together, you can see that within each strata, the relevant differences between treated and controls are remarkably close, while there is considerable heterogeneity between the strata.  Picking the number of strata is arbitrary, and using 5 or 10 strata is very common.  You should make sure your results are robust to this choice. 
+
+Evaluation can first be done visually using the tools we've been using thus far.  We will Make a new variable `aline_flg2`, which is a factor type to make the plots look a little nicer.  Using the `plot_prop_by_level` and `plot_OR_by_level` functions, we can plot the effects of `aline_flg2` by propensity score strata:
+
+```{r}
+dat$aline_flg2 <- as.factor(dat$aline_flg)
+plot_prop_by_level(dat,"ps.groups","hosp_exp_flg",factor.var2="aline_flg2")
+plot_OR_by_level(dat,"ps.groups","hosp_exp_flg",factor.var2="aline_flg2",include.ref.group.effect = FALSE)
+```
+
+Here we are looking for consistency of effect size and/or statistical significance.  The confidence intervals within each strata are fairly wide, but all include OR=1, and there is some variance in the apparent in strata effect (i.e., two groups have an apparent increase in the odds of death, where three other groups show small decreases in the odds of death).
+
+We can pool these estimates together using logistic regression (now with our real outcome, `hosp_exp_flg`) with `aline_flg` and the propensity score strata as an additional covariate:
+
+```{r}
+summary(strat1.glm <- glm(hosp_exp_flg ~ aline_flg2 + ps.groups,data=dat,family="binomial"))
+sjp.glm(strat1.glm,remove.estimates = names(coef(strat1.glm))[-c(1,2)],show.p = TRUE)
+```
+
+It doesn't seem that there is much evidence that an arterial line is associated with higher or lower mortality.
+
+
+## Propensity Score Matching
+
+While stratification is reasonably straightforward, matching is another method people often use.
+
+For each patient with a arterial line, we find one or more patients with a similar propensity score who didn't get one, and 'match' these patients into a small stratum.
+
+This step is not necessary, and is more for ease of illustration.  Let's first begin by randomly removing 500 patients who received an aline, and creating a new data frame called `dat2`
+
+```{r}
+dat2 <- dat[-sample(which(dat$aline_flg==1),size=500,replace=FALSE),]
+```
+
+Next, we will use the `matchit` function from the `MatchIt` package.  Here we will trying to match pairs of people, one who received an aline, and one who didn't, with close propensity scores.  There are several ways to match patients, and different ways to measure closeness, but we will use the defaults (for now):
+
+```{r}
+match.ps1 <- matchit(aline_flg2 ~ ps,data=dat2[,c("aline_flg2","ps")],method="nearest")
+match.ps1
+```
+
+The formula should be straightforward for you to understand now, and we pass just the two columns we need to the do the matching (`aline_flg` and `ps`). You can see if we print to the console the matching object, `match.ps1`, we match every treated with a control, and have 465 unmatched controls left over.  This illustrates that sometimes matching can cause wasting data.
+
+Next, `matchit` provides a plotting method:
+
+```{r}
+plot(match.ps1)
+```
+
+Here the plot shows (by ranking in each of the treatment groups on the axes) the propensity score before matching (left,all) and after (right, matched).  Ideally the individual data points are aligned on the diagonal line.  Here you see we do end up with some departure for high levels of the propensity score, but it is much better than the unmatched group.
+
+We can look at the proposed matches.  The first 6 pairs by rownames are:
+
+```{r}
+head(match.ps1$match.matrix)
+```
+
+So the row named 2 in the original data frame goes with the row named 2202  To have a look at the data for these patients:
+
+```{r}
+dat2[row.names(dat2) %in% c(2,match.ps1$match.matrix[rownames(match.ps1$match.matrix)==2,]),c("aline_flg","age","sofa_first","chf_flg","gender_num","hosp_exp_flg","ps")]
+```
+
+SOFA and the comorbidities are exactly matched, as is `gender_num`, with the only difference being age, where the patients are about 3 years apart.  Not too bad all things considered.  The propensity score is 0.63 vs 0.57.  You can specify the maximum distance by something called a caliper, which you will be asked to look at in the exercises.
+
+Typically one also generates some demographic variables to illustrate the balance the propensity score matching has accomplished.
+
+```{r}
+CreateTableOne(dat[rownames(dat) %in% c(rownames(match.ps1$match.matrix),match.ps1$match.matrix),],
+               vars=c("age","sofa_first","chf_flg","gender_num"),strata=c("aline_flg"),test=FALSE) %>% print(
+  printToggle      = FALSE,
+  showAllLevels    = TRUE,
+  cramVars         = "kon"
+) %>% 
+{data.frame(
+  variable_name             = gsub(" ", "&nbsp;", rownames(.), fixed = TRUE), ., 
+  row.names        = NULL, 
+  check.names      = FALSE, 
+  stringsAsFactors = FALSE)} %>% 
+knitr::kable()
+```
+
+
+Evaluating the intervention (aline) among matched pairs involves bringing the pairs' outcomes together:
+
+```{r}
+outcome <- data.frame(aline_pt=dat2[row.names(match.ps1$match.matrix),"hosp_exp_flg"], match_pt=dat2[match.ps1$match.matrix,"hosp_exp_flg"])
+head(outcome)
+```
+
+Here you see among matched pairs the first two are concordant (both of the treated and controls lived), but the next four are discordant (one of the pair died, while the other lived.)
+
+We can compose a 2x2 table with these paired data, but calculating an odds ratio is tricky, as this is not the same form of 2x2 table as we've seen before.  In fact, the concordant pairs of matched pairs don't figure into the odds ratio at all, and the odds ratio is simple the ratio of the off diagonal _counts_.
+
+```{r}
+tab.match1 <- table(outcome$aline_pt,outcome$match_pt,dnn=c("Aline","Matched Control"))
+tab.match1
+tab.match1[1,2]/tab.match1[2,1]
+paste("95% Confint", round(exp(c(log(tab.match1[2,1]/tab.match1[1,2]) - qnorm(0.975)*sqrt(1/tab.match1[1,2] +1/tab.match1[2,1]),log(tab.match1[2,1]/tab.match1[1,2]) + qnorm(0.975)*sqrt(1/tab.match1[1,2] +1/tab.match1[2,1])) ),2))
+mcnemar.test(tab.match1) # for 1-1 pairs
+```
+
+The confidence interval and a relevant hypothesis test are done above, and are correct if the matching is done on pairs only.  Alternative methods are available for $K$ to 1 matching, which is also quite common.
+
+## Other Methods
+
+There are a number of other methods which are also extremely common which use propensity scores, or a similar concept, including methods which involve weighting, and so-called 'doubly-robust' methods.  These methods typically relying on the assumption that there is no unmeasured confounding, and are becoming more accessible with software becoming increasingly available.
+
+
+### Student Questions:
+
+> a) We fit the propensity score model on a limited number of potential confounders.  Which of the following would be easy and worthwhile to incorporate into an expanded propensity score model for `aline_flg`:
+- subject_id
+- hosp_exp_flg
+- service_unit
+- weight_first
+- mal_flg
+- map_first
+
+> If not easy or worthwhile, state why.
+
+> b) Build a propensity score model with the `ps` function using the `dat` data frame for `aline_flg`.  Regardless of your answers in a) and in addition to `age`, `sofa_first`, `chf_flg` and `gender_num`, add `service_unit2` and all the comorbitidy `flg` variables (`afib_flg` through `pneumonia_flg`, but exclude `endocarditis_flg`).  Evaluate the balance using the `bal.table` function with the `es` and `ATE` option, and create a table with relevant summary statistics for _quintiles_ (5 groups) of the propensity scores you just created, along with `aline_flg`.  Comment on the balance.  
+
+
+> c) Create relevant plots to assess if aline_flg affects mortality within each strata.  Do these plots differ from the ones in the smaller set of covariates.  If so how?
+
+> d) Aggregate the estimates across strata to estimate an overall odds ratio.
+
+> e) Using these newly generated propensity scores, with the `matchit` function and an additional argument (caliper=0.2), match the entire cohort (i.e., do no remove any patients).  If you get an error, determine why the error occurred, and explain in words why it occurred, but ignore it for subsequent work.  Assess with data visualiztion and appropriate tables, how well the matched pairs are balanced across the covariates considered.  Is this better than the work above (`match.ps1`)?  Is the sample size of matched pairs larger or smaller?  Why?
+
+> f) Using the matched pairs, estimate an odds ratio, confidence interval, and p-value for the effect of aline.
+
+> g) Repeat (e-f) but with caliper=0.1.  Briefly comment on the trade offs which occur when you change the caliper size.  Use more values of calipers if necessary.
+

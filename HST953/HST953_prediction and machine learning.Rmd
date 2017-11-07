@@ -27,13 +27,15 @@ For those students taking the course for credit, the work done during this works
 Prediction usually refers to using a statistical model to determine the expectation of different outcomes for patient with a set of covariate and confounder values.  For example, let's load the aline dataset from the previous workshop.
 
 ```{r}
-dat <- read.csv("aline-dataset.csv")
+dat <- read.csv("/Users/uchimidouryou/Documents/HSPH:MIT:Catalyst/HST953/aline-dataset.csv")
 library(plyr);library(Hmisc)
 dat$sofa_cat <- cut2(dat$sofa_first,c(0,4,7))
 dat$age.cat <- cut2(dat$age,c(50,60,70,80))
 dat$service_unit2 <- as.character(dat$service_unit)
 dat$service_unit2[dat$service_unit2 %in% names(which(table(dat$service_unit)<200))] <- "Other"
-
+```
+```{r}
+head(dat)
 ```
 
 Let's fit the full model we considered for 28 day mortality in the previous workshop.
@@ -50,40 +52,79 @@ new.pt <- subset(dat,hadm_id==137140)
 new.pt
 ```
 
-and we'd like to know the patient's chance of survival at 28 days, we can estimate this by using the predict function, which takes
+and 
+we'd like to know `the patient's chance of survival at 28 days`, we can estimate this by using the predict function, which takes
 
 
 ```{r}
 predict(full.model.glm,newdata=new.pt,type="response")
 ```
 
-Based on this model, we would predict that the probability of death for this patient would be around 0.16, meaning that they have about a 84\% chance of surviving, but how good is this prediction?  We can do predictions for every patient in the dataset and add it as a new column in the `dat` data frame, and then plot the distribution of these predictions.:
+Based on this model, we would predict that the probability of death for this patient would be around 0.16, meaning that they have about a 84\% chance of surviving, but how good is this prediction? ` We can do predictions for every patient in the dataset and add it as a new column in the `dat` data frame`, and then plot the distribution of these predictions.:
+
+###why log????###
 
 ```{r}
 dat$logRegPred <- predict(full.model.glm,newdata=dat,type="response")
+dat$logRegPred
 hist(dat$logRegPred,breaks=11)
 ```
 
-Here we see that the model predicts that most patients have a fairly low risk of dying, while some patients have a very high risk of dying.  One way of looking at how good this prediction is, is by looking at the accuracy (how often we would predict the right outcome).  To do this we need to specify a cutoff above which we make a binary prediction that the patient is likely to die, and below which we predict that the patients will live.  Let's say, we set this cut-off at 0.5:
-
-
-```{r}
-dat$logRegPred0.5 <- dat$logRegPred>0.5
-```
+Here we see that the model predicts that most patients have a fairly low risk of dying, while some patients have a very high risk of dying.  One way of looking at how good this prediction is, is by looking at the accuracy (how often we would predict the right outcome).  `To do this we need to specify a cutoff` above which we make a binary prediction that the patient is likely to die, and below which we predict that the patients will live.  Let's say, we set this cut-off at 0.5:
 
 Then use the `table` function to see how the outcomes are distributed across our two predictions:
 
-
 ```{r}
+dat$logRegPred0.5 <- dat$logRegPred>0.5
+head(dat$logRegPred0.5 )
 predTab1 <- table(dat$logRegPred0.5,dat$day_28_flg==1,dnn=c("Prediction","Death by 28 Days"))
 predTab1
 ```
 
+
+```{r}
+predTab2 <- table(dat$logRegPred0.5,dat$day_28_flg, dnn=c("Prediction","Death by 28 Days"))
+predTab2
+```
+
+
 The *accuracy* is the times where our prediction matched the actual outcome.  This corresponds to the diagonal elements of the 2x2 table.  In our case, `r sum(diag(predTab1))/sum(predTab1)`.  Is this good?
+```{r}
+diag((predTab1))
+sum(diag(predTab1))
+sum(predTab1)
+sum(diag(predTab1))/sum(predTab1)
+```
+
+
+```{r}
+sum(diag(predTab1))/sum(predTab1)
+```
+
 
 That can be a complicated question.  
+```{r}
+predTab1 <- table(dat$logRegPred0.5, dat$day_28_flg, dnn=c("Prediction","Death by 28 Days"))
+predTab1
+```
+```{r}
+predTab10 <- table(dat$logRegPred0.5,dat$day_28_flg==1,dnn=c("Prediction","Death by 28 Days"))
+predTab10
+```
 
-1. If we had just picked to predict that everyone lives, our accuracy would be almost as good: `r sum(dat$day_28_flg==0)/length(dat$day_28_flg)`.
+```{r}
+predTab10 <- table(dat$logRegPred0.5,dat$day_28_flg==0,dnn=c("Prediction","Death by 28 Days"))
+predTab10
+```
+
+1. If we had just picked to predict that everyone lives, our accuracy would be almost as good: 
+`r sum(dat$day_28_flg==0)/length(dat$day_28_flg)`.
+```{r}
+length(dat$day_28_flg)
+sum(dat$day_28_flg==0)
+sum(dat$day_28_flg==0)/length(dat$day_28_flg)
+```
+
 2. It's unclear whether `0.5` is the "right" threshold.
 3. We are making predictions on the same observations we used to train our data.  This can make the performance a little to optimistic.
 
@@ -95,11 +136,17 @@ When we train a model using `glm` or any other algorithm, were are optimizing th
 
 Let's explore this a little further.  We will divide the `dat` data frame into two datasets: `datTrain` and `datTest`, by randomly selecting ICU stays to be in each, so that about 50\% of our data is in the training dataset and about 50\% is contained in the testing dataset.
 
-We first set a seed which makes any random selections reproducible.  Then we use the `createDataPartition` function to sample indexes in the `dat` data frame to include in `datTrain`.  Then we use these indexes to establish training (`datTrain`) and testing (`datTest`) datasets.
+####???????####
+`We first set a seed which makes any random selections reproducible.`  Then we use the `createDataPartition` function to sample indexes in the `dat` data frame to include in `datTrain`.  Then we use these indexes to establish training (`datTrain`) and testing (`datTest`) datasets.
+```{r}
+install.packages("caret")
+```
 
 ```{r}
 set.seed(4441)  # We do this so it's reproducible!
 library(caret)
+library(lattice)
+library(ggplot2)
 trainIdx <- createDataPartition(dat$day_28_flg,p=0.5)$Resample1
 datTrain <- dat[trainIdx,]
 datTest <- dat[-trainIdx,]
@@ -114,18 +161,25 @@ summary(train.glm)
 ```
 
 Let's create predictions for this model in the training dataset:
+```{r}
+datTrain$logRegPred <- predict(train.glm,newdata=datTrain,type="response")
+datTrain$logRegPred0.5 <- datTrain$logRegPred>0.5
+head(datTrain$logRegPred0.5)
+```
 
 ```{r}
 datTrain$logRegPred <- predict(train.glm,newdata=datTrain,type="response")
 datTrain$logRegPred0.5 <- datTrain$logRegPred>0.5
-
 predTabTr <- table(datTrain$logRegPred0.5,datTrain$day_28_flg==1,dnn=c("Prediction","Death by 28 Days"))
 predTabTr
 ```
 
 Accuracy is pretty similar to that when using the whole dataset: `r sum(diag(predTabTr))/sum(predTabTr)`.
+```{r}
+sum(diag(predTabTr))/sum(predTabTr)
+```
 
-Now, let's try it on the testing dataset.  This is a dataset which was *not* used to build the model on, so it's a better assessment of the performance of the prediction algorithm:
+Now, let's try it `on the testing dataset`.  This is a dataset which was *not* used to build the model on, so it's a better assessment of the performance of the prediction algorithm:
 
 
 ```{r}
@@ -137,28 +191,60 @@ predTabTe
 ```
 
 Here the accuracy is about `r sum(diag(predTabTe))/sum(predTabTe)`, which is slightly less than that in the training dataset.  This discrepancy between training and test set performance is not that large, but in many circumstances, it can be very significant.
+```{r}
+sum(diag(predTabTe))/sum(predTabTe)
+```
+
+#####################################################################################################################
 
 ## ROC Curves.
 
-In the previous section, we again used 0.5 as a threshold, but this was completely arbitrary, and may not be a good cutoff for our particular application.
+In the previous section, we again used 0.5 as a threshold, but this was completely arbitrary`(not planned or chosen for a particular reason : not based on reason or evidence: done without concern for what is fair or right)`, and may not be a good cutoff for our particular application.
 
 Looking back at `predTabTe`, if look at those who survived, we correctly predicted their survival in `r predTabTe[1,1]` cases, or about `r round(predTabTe[1,1]/(predTabTe[1,1] + predTabTe[2,1])*100,1)`\% of cases.  As for those who died, we only correctly predicted their survival in `r round(predTabTe[2,2]/(predTabTe[1,2] + predTabTe[2,2])*100,2)`\% of cases.
 
-Our accuracy measure is only good, because we have far more survivors in this population of patients than deaths.  These two quantities we calculated are often called the specificity (for survivors, \% of time we correctly predict them as survivors, aka true negative rate), and the sensitivity (for deaths, \% of time we correctly identified them as patients who died, aka true positive rate).
+```{r}
+predTabTe <- table(datTest$logRegPred0.5,datTest$day_28_flg==1,dnn=c("Prediction","Death by 28 Days"))
+predTabTe
+predTabTe[1,1]
+predTabTe[2,1]
+predTabTe[,1]
+sum(predTabTe[,1])
+predTabTe[1,1] + predTabTe[2,1]
+round(predTabTe[1,1]/(predTabTe[1,1] + predTabTe[2,1])*100,1)
+round(predTabTe[2,2]/(predTabTe[1,2] + predTabTe[2,2])*100,1)
+
+```
+
+Our accuracy measure is only good, because we have far more survivors in this population of patients than deaths.  These two quantities we calculated are often called the `specificity` (for survivors, \% of time we correctly predict them as survivors, aka `true negative rate`), and the `sensitivity` (for deaths, \% of time we correctly identified them as patients who died, aka `true positive rate`).
 
 We of course picked 0.5 as a cutoff, but this is arbitrary.  One way of getting around the arbitrariness of this, is to evaluate all potential cutoffs through an *Receiver Operator Characteristic Curve* (ROC curve).
 
 ROC curves plot 1-specificity vs. the sensitivity of the algorithm for predicting the outcome, while varying the cutoffs used to define the predictions.  Evaluation is usually done with the area under the curve, with AUC of 1 indicating perfect prediction, and an AUC of 0.5, being no better than "flipping a coin".
 
 For our training and test datasets, the ROC curves and AUCs are presented below.
+```{r}
+install.packages("ROCR")
+```
+
 
 ```{r}
 library(ROCR)
 predTr <- prediction(datTrain$logRegPred,datTrain$day_28_flg)
+class(predTr)
+
 perfTr <- performance(predTr,"tpr","fpr")
+class(perfTr)
+
 plot(perfTr)
 text(0.6,0.2,paste0("AUC: ", round(performance(predTr,"auc")@y.values[[1]],3)))
+predTe <- prediction(datTest$logRegPred,datTest$day_28_flg)
+perfTe <- performance(predTe,"tpr","fpr")
+lines(perfTe@x.values[[1]],perfTe@y.values[[1]],col='red')
+text(0.6,0.1,paste0("AUC: ", round(performance(predTe,"auc")@y.values[[1]],3)),col='red')
+```
 
+```{r}
 predTe <- prediction(datTest$logRegPred,datTest$day_28_flg)
 perfTe <- performance(predTe,"tpr","fpr")
 lines(perfTe@x.values[[1]],perfTe@y.values[[1]],col='red')
@@ -177,6 +263,10 @@ ROC curves tell us about discrimination (how well we are able to distinguish bet
 
 There are qualitative and quantitative assessments of calibration.  A qualitative assessment can be done using the `calibrate.plot` function in the `gbm` package:
 
+```{r}
+install.packages("gbm")
+```
+
 
 ```{r}
 #install.packages("gbm") # if this chunk fails, install gbm package
@@ -188,7 +278,8 @@ gbm::calibrate.plot(datTest$day_28_flg,datTest$logRegPred)
 
 
 
-More formal testing can be done using the Hosmer-Lemeshow test (see `?hoslem_gof` in the `sjstats` package).  Beware: the null hypothesis is that the model fits the observed data!
+More formal testing can be done using the Hosmer-Lemeshow test (see `?hoslem_gof` in the `sjstats` package).  
+Beware: the null hypothesis is that the model fits the observed data!
 
 
 
