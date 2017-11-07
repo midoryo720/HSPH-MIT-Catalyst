@@ -1,0 +1,107 @@
+---
+title: "HST953_prediction and machine learning_answer"
+author: "Ryo uchimido"
+date: "11/7/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+dat <- read.csv("/Users/uchimidouryou/Documents/HSPH:MIT:Catalyst/HST953/aline-dataset.csv")
+library(plyr);library(Hmisc)
+dat$sofa_cat <- cut2(dat$sofa_first,c(0,4,7))
+dat$age.cat <- cut2(dat$age,c(50,60,70,80))
+dat$service_unit2 <- as.character(dat$service_unit)
+dat$service_unit2[dat$service_unit2 %in% names(which(table(dat$service_unit)<200))] <- "Other"
+```
+
+### Student Question 1:
+
+> a) Moving towards a topic which we will begin next week, sometimes in observational data, we want to model who gets the treatment (or more generally who gets exposed).  With this in mind, you might find it useful to build a model to predict treatment.  Build a 'full model' with the variables we used above, using `aline_flg` as the response ('outcome') and `all other variables as predictors (covariates)`, except do not include `aline_flg` or `day_28_flg` as predictors.  Report the accuracy of this test using the 0.5 cutoff, and give an estimate of the accuracy of a 'baseline' model (one which uses no covariates).
+
+```{r}
+aline.full.model.glm <- glm(aline_flg ~ age.cat + sofa_cat + service_unit2 + renal_flg + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg,data=dat,family="binomial") 
+summary(aline.full.model.glm)
+```
+```{r}
+dat$logRegPredaline <- predict(aline.full.model.glm,newdata=dat,type="response")
+hist(dat$logRegPredaline,breaks=11)
+```
+```{r}
+dat$logRegPredaline0.5 <- dat$logRegPredaline>0.5
+predTaba1 <- table(dat$logRegPredaline0.5,dat$aline_flg==1,dnn=c("Prediction","aline_indwelling"))
+predTab1
+```
+```{r}
+diag((predTaba1))
+sum(diag(predTaba1))
+sum(predTaba1)
+sum(diag(predTaba1))/sum(predTaba1)
+```
+### The accuarcy of the test modle with 0.5 cutt off is 68%. 
+
+```{r}
+length(dat$aline_flg)
+sum(dat$aline_flg==1)
+sum(dat$aline_flg==1)/length(dat$aline_flg)
+```
+### an estimate of the accuracy of a 'baseline' model is 49%
+
+> b) Repeat part a), but use the training set we defined above to fit the model.  Evaluate the accuracy of the model as in a) in both the training and test sets.
+
+```{r}
+set.seed(4441)  
+library(caret)
+library(lattice)
+library(ggplot2)
+trainIdx <- createDataPartition(dat$aline_flg,p=0.5)$Resample1
+datTrain <- dat[trainIdx,]
+datTest <- dat[-trainIdx,]
+```
+```{r}
+train.glm <- glm(aline_flg ~ age.cat + sofa_cat + service_unit2 + renal_flg + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg,data=datTrain,family="binomial")
+datTrain$logRegPred <- predict(train.glm,newdata=datTrain,type="response")
+datTrain$logRegPred0.5 <- datTrain$logRegPred>0.5
+predTabTr <- table(datTrain$logRegPred0.5,datTrain$day_28_flg==1,dnn=c("Prediction","Death by 28 Days"))
+sum(diag(predTabTr))/sum(predTabTr)
+```
+```{r}
+test.glm <- glm(aline_flg ~ age.cat + sofa_cat + service_unit2 + renal_flg + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg,data=datTest,family="binomial")
+datTest$logRegPred <- predict(test.glm,newdata=datTest,type="response")
+datTest$logRegPred0.5 <- datTest$logRegPred>0.5
+predTabTs <- table(datTest$logRegPred0.5,datTest$aline_flg==1,dnn=c("Prediction","a-line indwelling"))
+sum(diag(predTabTs))/sum(predTabTs)
+```
+
+
+> c) Plot an ROC curve for the training and test sets.
+
+```{r}
+library(ROCR)
+train.glm <- glm(aline_flg ~ age.cat + sofa_cat + service_unit2 + renal_flg + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg,data=datTrain,family="binomial")
+datTrain$logRegPred <- predict(train.glm,newdata=datTrain,type="response")
+predTr <- prediction(datTrain$logRegPred,datTrain$aline_flg)
+perfTr <- performance(predTr,"tpr","fpr")
+plot(perfTr)
+text(0.6,0.2,paste0("AUC: ", round(performance(predTr,"auc")@y.values[[1]],3)))
+
+test.glm <- glm(aline_flg ~ age.cat + sofa_cat + service_unit2 + renal_flg + chf_flg + cad_flg + stroke_flg + mal_flg + resp_flg,data=datTest,family="binomial")
+datTest$logRegPred <- predict(train.glm,newdata=datTest,type="response")
+predTe <- prediction(datTest$logRegPred,datTest$day_28_flg)
+perfTe <- performance(predTe,"tpr","fpr")
+lines(perfTe@x.values[[1]],perfTe@y.values[[1]],col='red')
+text(0.6,0.1,paste0("AUC: ", round(performance(predTe,"auc")@y.values[[1]],3)),col='red')
+```
+> d) Assess the calibration of the model in both the training and test sets.
+
+```{r}
+prop.table(table(datTrain$aline_flg,cut2(datTrain$logRegPred,seq(0,1,0.1))),2)
+gbm::calibrate.plot(datTrain$aline_flg,datTrain$logRegPred)
+prop.table(table(datTest$aline_flg,cut2(datTest$logRegPred,seq(0,1,0.1))),2)
+gbm::calibrate.plot(datTest$aline_flg,datTest$logRegPred)
+```
+### The model from the training set appears better caliblrated than the test set.
+
